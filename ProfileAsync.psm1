@@ -32,35 +32,24 @@ function Write-ProfileAsyncLog
     ) -join '  ' | Out-File -FilePath $LogPath -Append
 }
 
-function Import-ProfileAsync
+function New-BoundPowerShell
 {
+    <#
+        .DESCRIPTION
+        Reflection magic!
+
+        Returns an instance of PowerShell with some internal runspace objects set to the objects
+        from the current execution context. These objects are not supposed to be shared; race conditions
+        may occur.
+    #>
+
     [CmdletBinding()]
-    param
-    (
-        [Parameter(Mandatory, Position = 0)]
-        [scriptblock]$ScriptBlock
-    )
-
-    if ($env:PWSH_DEFERRED_LOAD -imatch '^(0|false|no)$')
-    {
-        . $ScriptBlock
-        return
-    }
-
-
-    "=== Starting deferred load ===" | Write-ProfileAsyncLog
-
-
-    # https://seeminglyscience.github.io/powershell/2017/09/30/invocation-operators-states-and-scopes
-    $GlobalState = [psmoduleinfo]::new($false)
-    $GlobalState.SessionState = $ExecutionContext.SessionState
+    param ()
 
     # A runspace to run our code asynchronously; pass in $Host to support Write-Host
     $Runspace = [runspacefactory]::CreateRunspace($Host)
     $Powershell = [powershell]::Create($Runspace)
     $Runspace.Open()
-    $Runspace.SessionStateProxy.PSVariable.Set('GlobalState', $GlobalState)
-    $Runspace.SessionStateProxy.PSVariable.Set('ScriptBlock', $ScriptBlock)
 
     # ArgumentCompleters are set on the ExecutionContext, not the SessionState
     # Note that $ExecutionContext is not an ExecutionContext, it's an EngineIntrinsics
@@ -94,20 +83,35 @@ function Import-ProfileAsync
     $ContextCACProperty.SetValue($RSContext, $CAC)
     $ContextNACProperty.SetValue($RSContext, $NAC)
 
-    Remove-Variable -ErrorAction Ignore (
-        'Private',
-        'GlobalContext',
-        'ContextField',
-        'ContextCACProperty',
-        'ContextNACProperty',
-        'CAC',
-        'NAC',
-        'RSEngineField',
-        'RSEngine',
-        'EngineContextField',
-        'RSContext',
-        'Runspace'
+    return $Powershell
+}
+
+function Import-ProfileAsync
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory, Position = 0)]
+        [scriptblock]$ScriptBlock
     )
+
+    if ($env:PWSH_DEFERRED_LOAD -imatch '^(0|false|no)$')
+    {
+        . $ScriptBlock
+        return
+    }
+
+
+    "=== Starting deferred load ===" | Write-ProfileAsyncLog
+
+
+    # https://seeminglyscience.github.io/powershell/2017/09/30/invocation-operators-states-and-scopes
+    $GlobalState = [psmoduleinfo]::new($false)
+    $GlobalState.SessionState = $ExecutionContext.SessionState
+
+    $PowerShell = New-BoundPowerShell
+    $PowerShell.Runspace.SessionStateProxy.PSVariable.Set('GlobalState', $GlobalState)
+    $PowerShell.Runspace.SessionStateProxy.PSVariable.Set('ScriptBlock', $ScriptBlock)
 
     $Wrapper = {
         # Without a sleep, you get issues:
@@ -152,8 +156,8 @@ function Import-ProfileAsync
                 Write-Host $Msg -ForegroundColor Yellow
             }
 
+            $PowerShell.Runspace.Dispose()
             $PowerShell.Dispose()
-            $Runspace.Dispose()
             Unregister-Event $SourceIdentifier
             Get-Job $SourceIdentifier | Remove-Job
         }
