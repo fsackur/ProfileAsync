@@ -60,6 +60,7 @@ function Import-ProfileAsync
     $Powershell = [powershell]::Create($Runspace)
     $Runspace.Open()
     $Runspace.SessionStateProxy.PSVariable.Set('GlobalState', $GlobalState)
+    $Runspace.SessionStateProxy.PSVariable.Set('ScriptBlock', $ScriptBlock)
 
     # ArgumentCompleters are set on the ExecutionContext, not the SessionState
     # Note that $ExecutionContext is not an ExecutionContext, it's an EngineIntrinsics
@@ -117,7 +118,7 @@ function Import-ProfileAsync
         # 20ms seems to be enough on my machine, but let's be generous - this is non-blocking
         Start-Sleep -Milliseconds 200
 
-        . $GlobalState {. $ScriptBlock; Remove-Variable ScriptBlock}
+        . $GlobalState {. $args[0]} $ScriptBlock
     }
 
     $AsyncResult = $Powershell.AddScript($Wrapper.ToString()).BeginInvoke()
