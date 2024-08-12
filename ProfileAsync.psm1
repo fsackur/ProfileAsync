@@ -92,6 +92,9 @@ function Import-ProfileAsync
         .SYNOPSIS
         Load your powershell profile asynchronously, so you can get to the prompt faster.
 
+        .LINK
+        https://github.com/fsackur/ProfileAsync
+
         .DESCRIPTION
         This command executes a scriptblock asynchronously using the current session's
         execution context. In simple terms, this runs code asynchronously in the caller's
@@ -121,18 +124,39 @@ function Import-ProfileAsync
         .PARAMETER ScriptBlock
         The code to be executed asynchronously.
 
-        .LINK
-        https://github.com/fsackur/ProfileAsync
+        .PARAMETER Delay
+        Interval, in milliseconds, to wait within the asynchronous runspace before executing the
+        scriptblock.
+
+        This is necessary because this command subverts normal runspace initialisation. Without
+        this delay, command availability may be unreliable when the command is run at startup.
+
+        This delay can be set to 0 when the command is run in a fully-initialised powershell
+        session.
+
+        10ms may be sufficient on a fast machine. 100-200ms should cover most recent machines.
+
+        .PARAMETER PWSH_PROFILE_ASYNC_DISABLE
+        Disables the async and scope features. Also accepted as an env var; parameter takes
+        precedence.
+
+        Use this to recover a crashing profile. Code will not be run in the global scope.
     #>
 
     [CmdletBinding()]
     param
     (
         [Parameter(Mandatory, Position = 0)]
-        [scriptblock]$ScriptBlock
+        [scriptblock]$ScriptBlock,
+
+        [ValidateRange(0, 5000)]
+        [PSDefaultValue(Help = "500ms")]
+        [int]$Delay = 500,
+
+        [switch]$PWSH_PROFILE_ASYNC_DISABLE
     )
 
-    if ($env:PWSH_DEFERRED_LOAD -imatch '^(0|false|no)$')
+    if ($PWSH_PROFILE_ASYNC_DISABLE -or $env:PWSH_PROFILE_ASYNC_DISABLE -imatch '^(1|true|yes)$')
     {
         . $ScriptBlock
         return
@@ -141,14 +165,16 @@ function Import-ProfileAsync
 
     "=== Starting deferred load ===" | Write-ProfileAsyncLog
 
+    $PowerShell = New-BoundPowerShell
 
     # https://seeminglyscience.github.io/powershell/2017/09/30/invocation-operators-states-and-scopes
     $GlobalState = [psmoduleinfo]::new($false)
     $GlobalState.SessionState = $ExecutionContext.SessionState
 
-    $PowerShell = New-BoundPowerShell
     $PowerShell.Runspace.SessionStateProxy.PSVariable.Set('GlobalState', $GlobalState)
     $PowerShell.Runspace.SessionStateProxy.PSVariable.Set('ScriptBlock', $ScriptBlock)
+    $PowerShell.Runspace.SessionStateProxy.PSVariable.Set('Delay', $Delay)
+
 
     $Wrapper = {
         # Without a sleep, you get issues:
@@ -157,7 +183,7 @@ function Import-ProfileAsync
         #   - no highlighting
         # Assumption: this is related to PSReadLine.
         # 20ms seems to be enough on my machine, but let's be generous - this is non-blocking
-        Start-Sleep -Milliseconds 200
+        Start-Sleep -Milliseconds $Delay
 
         . $GlobalState {. $args[0]} $ScriptBlock
     }
