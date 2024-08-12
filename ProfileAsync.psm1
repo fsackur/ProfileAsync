@@ -88,6 +88,43 @@ function New-BoundPowerShell
 
 function Import-ProfileAsync
 {
+    <#
+        .SYNOPSIS
+        Load your powershell profile asynchronously, so you can get to the prompt faster.
+
+        .DESCRIPTION
+        This command executes a scriptblock asynchronously using the current session's
+        execution context. In simple terms, this runs code asynchronously in the caller's
+        scope.
+
+        This command is not the best tool if you do not need that specific behaviour.
+
+        When used in a powershell profile, it effectively runs in the global scope. Things in the
+        scriptblock will be available in the session when the scriptblock completes.
+
+        This includes modules, functions, aliases, variables and argument completers.
+
+        Warning:
+
+        This command uses reflection hacks. PowerShell is designed to avoid async bugs in areas
+        that we jam async code into. Your session may crash. Errors may be misleading. Do not use
+        in server scripts.
+
+        The risk is minimised in the designed use case:
+
+        - use only in your powershell profile
+        - only call this command once
+        - call this command at the bottom
+        - increase delay if you get errors
+        - don't do other async stuff before the async code completes
+
+        .PARAMETER ScriptBlock
+        The code to be executed asynchronously.
+
+        .LINK
+        https://github.com/fsackur/ProfileAsync
+    #>
+
     [CmdletBinding()]
     param
     (
