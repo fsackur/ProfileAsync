@@ -122,9 +122,11 @@ function Import-ProfileAsync
 
     $AsyncResult = $Powershell.AddScript($Wrapper.ToString()).BeginInvoke()
 
-    $null = Register-ObjectEvent -MessageData $AsyncResult -InputObject $Powershell -EventName InvocationStateChanged -SourceIdentifier __ProfileAsyncCleanup -Action {
+    $SourceIdentifier = "__ProfileAsyncCleanup__" + [guid]::NewGuid()
+    $null = Register-ObjectEvent -MessageData $AsyncResult -InputObject $Powershell -EventName InvocationStateChanged -SourceIdentifier $SourceIdentifier -Action {
         $AsyncResult = $Event.MessageData
         $Powershell = $Event.Sender
+        $SourceIdentifier = $EventSubscriber.SourceIdentifier
         if ($Powershell.InvocationStateInfo.State -ge 2)
         {
             if ($Powershell.Streams.Error)
@@ -151,8 +153,8 @@ function Import-ProfileAsync
 
             $PowerShell.Dispose()
             $Runspace.Dispose()
-            Unregister-Event __ProfileAsyncCleanup
-            Get-Job __ProfileAsyncCleanup | Remove-Job
+            Unregister-Event $SourceIdentifier
+            Get-Job $SourceIdentifier | Remove-Job
         }
     }
 
