@@ -177,46 +177,44 @@ function Import-ProfileAsync
 
 
     $Wrapper = {
-        # Without a sleep, you get issues:
-        #   - occasional crashes
-        #   - prompt not rendered
-        #   - no highlighting
-        # Assumption: this is related to PSReadLine.
-        # 20ms seems to be enough on my machine, but let's be generous - this is non-blocking
+        [System.Diagnostics.DebuggerHidden()]
+        param()
+
+        # Runspace init is unsafe. Stack traces point to PSReadLine; not sure
         Start-Sleep -Milliseconds $Delay
 
         . $GlobalState {. $args[0]} $ScriptBlock
     }
+    $AsyncResult = $Powershell.AddScript($Wrapper).BeginInvoke()
 
-    $AsyncResult = $Powershell.AddScript($Wrapper.ToString()).BeginInvoke()
 
     $SourceIdentifier = "__ProfileAsyncCleanup__" + [guid]::NewGuid()
-    $null = Register-ObjectEvent -MessageData $AsyncResult -InputObject $Powershell -EventName InvocationStateChanged -SourceIdentifier $SourceIdentifier -Action {
+    $HandlerParams = @{
+        MessageData = $AsyncResult
+        InputObject = $Powershell
+        EventName = "InvocationStateChanged"
+        SourceIdentifier = $SourceIdentifier
+    }
+    $null = Register-ObjectEvent @HandlerParams -Action {
         $AsyncResult = $Event.MessageData
         $Powershell = $Event.Sender
         $SourceIdentifier = $EventSubscriber.SourceIdentifier
+
+        if ($Powershell.Streams.Error)
+        {
+            $Powershell.Streams.Error | Out-String | Write-Host -ForegroundColor Red
+            $Powershell.Streams.Error.Clear()
+        }
+
         if ($Powershell.InvocationStateInfo.State -ge 2)
         {
-            if ($Powershell.Streams.Error)
-            {
-                $Powershell.Streams.Error | Out-String | Write-Host -ForegroundColor Red
-            }
-
             try
             {
-                # Profiles swallow output; it would be weird to output anything here
-                $null = $Powershell.EndInvoke($AsyncResult)
+                $Powershell.EndInvoke($AsyncResult)
             }
             catch
             {
                 $_ | Out-String | Write-Host -ForegroundColor Red
-            }
-
-            $h1 = Get-History -Id 1 -ErrorAction Ignore
-            if ($h1.CommandLine -match '\bcode\b.*shellIntegration\.ps1')
-            {
-                $Msg = 'VS Code Shell Integration is enabled. This may cause issues with deferred load. To disable it, set "terminal.integrated.shellIntegration.enabled" to "false" in your settings.'
-                Write-Host $Msg -ForegroundColor Yellow
             }
 
             $PowerShell.Runspace.Dispose()
@@ -225,8 +223,6 @@ function Import-ProfileAsync
             Get-Job $SourceIdentifier | Remove-Job
         }
     }
-
-    Remove-Variable Wrapper, Powershell, AsyncResult, GlobalState
 
     "synchronous load complete" | Write-ProfileAsyncLog
 }
