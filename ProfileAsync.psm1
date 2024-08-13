@@ -1,37 +1,3 @@
-function Write-ProfileAsyncLog
-{
-    param
-    (
-        [Parameter(Mandatory, ValueFromPipeline)]
-        [string]$Message
-    )
-
-    if (-not $LogProfileAsync) {return}
-
-    $LogPath = if ($env:XDG_CACHE_HOME)
-    {
-        Join-Path $env:XDG_CACHE_HOME PowerShellProfileAsync.log
-    }
-    else
-    {
-        Join-Path $HOME .cache/PowerShellProfileAsync.log
-    }
-
-    $Now = [datetime]::Now
-    if (-not $Start)
-    {
-        $Script:Start = $Now
-    }
-
-    $Timestamp = $Now.ToString('o')
-    (
-        $Timestamp,
-        ($Now - $Start).ToString('ss\.fff'),
-        [System.Environment]::CurrentManagedThreadId.ToString().PadLeft(3, ' '),
-        $Message
-    ) -join '  ' | Out-File -FilePath $LogPath -Append
-}
-
 function New-BoundPowerShell
 {
     <#
@@ -163,8 +129,6 @@ function Import-ProfileAsync
     }
 
 
-    "=== Starting deferred load ===" | Write-ProfileAsyncLog
-
     $PowerShell = New-BoundPowerShell
 
     # https://seeminglyscience.github.io/powershell/2017/09/30/invocation-operators-states-and-scopes
@@ -176,6 +140,7 @@ function Import-ProfileAsync
     $PowerShell.Runspace.SessionStateProxy.PSVariable.Set('Delay', $Delay)
 
 
+    "Starting asynchronous execution" | Write-Verbose
     $Wrapper = {
         [System.Diagnostics.DebuggerHidden()]
         param()
@@ -221,8 +186,8 @@ function Import-ProfileAsync
             $PowerShell.Dispose()
             Unregister-Event $SourceIdentifier
             Get-Job $SourceIdentifier | Remove-Job
+
+            "Asynchronous execution complete", "State: $($Powershell.InvocationStateInfo.State)" | Write-Verbose
         }
     }
-
-    "synchronous load complete" | Write-ProfileAsyncLog
 }
