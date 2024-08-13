@@ -1,0 +1,44 @@
+version: "{build}"
+
+image: Ubuntu2204
+
+cache:
+  - /home/appveyor/.local/share/powershell/Modules/
+
+branches:
+  only:
+    - main
+    - /^v\d+\.\d+\.\d+/
+
+skip_branch_with_pr: true
+
+environment:
+  GITHUB_TOKEN:
+    secure: +uoFiZQbo1uuQJWgZn3DKizlzMV/Ji9V9YJxCwtUvDRkwklysZSEMJiNgbiBlBS8
+  PSGALLERY_API_KEY:
+    secure: TgdRRYLIHZVtK6jOj3DAVgGMY+k7TaW/MF8ESPWF1PlnO2WL1jwVpqVCnQux4DP9
+
+install:
+  - pwsh: Invoke-Build AppveyorMetadata, AppveyorAbortWhenHeadAlreadyTagged, InstallBuildDependencies
+
+build_script:
+  - pwsh: Invoke-Build Build, Package
+
+artifacts:
+  - path: ./Build/**/$(APPVEYOR_PROJECT_NAME).*.nupkg
+    name: nupkg
+
+test_script:
+  - pwsh: Invoke-Build Test
+
+deploy:
+  - provider: GitHub
+    tag: $(APPVEYOR_REPO_TAG_NAME)
+    description: $(APPVEYOR_PROJECT_NAME) $(APPVEYOR_REPO_TAG_NAME)
+    auth_token: $(GITHUB_TOKEN)
+    artifact: nupkg
+    on:
+      APPVEYOR_REPO_TAG: true
+
+after_deploy:
+  - pwsh: Invoke-Build Publish -PSGalleryApiKey $env:PSGALLERY_API_KEY
