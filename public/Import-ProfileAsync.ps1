@@ -128,8 +128,6 @@ function Import-ProfileAsync
                 $_ | Out-String | Write-Host -ForegroundColor Red
             }
 
-            $PowerShell.Runspace.Dispose()
-            $PowerShell.Dispose()
             Unregister-Event $SourceIdentifier
             Get-Job $SourceIdentifier | Remove-Job
 
