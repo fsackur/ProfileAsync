@@ -48,6 +48,9 @@ function Import-ProfileAsync
 
         10ms may be sufficient on a fast machine. 100-200ms should cover most recent machines.
 
+        .PARAMETER LogPath
+        File for logging. If not supplied, no log is written.
+
         .PARAMETER PWSH_PROFILE_ASYNC_DISABLE
         Disables the async and scope features. Also accepted as an env var; parameter takes
         precedence.
@@ -65,6 +68,8 @@ function Import-ProfileAsync
         [PSDefaultValue(Help = "500ms")]
         [int]$Delay = 500,
 
+        [string]$LogPath,
+
         [switch]$PWSH_PROFILE_ASYNC_DISABLE
     )
 
@@ -74,16 +79,33 @@ function Import-ProfileAsync
         return
     }
 
+    if ($LogPath)
+    {
+        $LogDir = $LogPath | Split-Path
+        if (-not (Test-Path $LogDir -PathType Container))
+        {
+            $null = New-Item -ItemType Directory $LogDir -Force
+            if (!$?)
+            {
+                Write-Warning "$($MyCommand.InvocationName): Could not create $LogDir. Logging is disabled."
+                Remove-Variable LogPath
+            }
+        }
+    }
+    $env:PWSH_PROFILE_ASYNC_LOG_PATH = $LogPath
+    "Warning", "Verbose", "Debug", "Information" | ForEach-Object {Set-Alias "Write-$_" Write-Log}
+
 
     $PowerShell = New-BoundPowerShell
 
     # https://seeminglyscience.github.io/powershell/2017/09/30/invocation-operators-states-and-scopes
-    $GlobalState = [psmoduleinfo]::new($false)
+    $GlobalState = [psmoduleinfo]::new($true)
     $GlobalState.SessionState = $ExecutionContext.SessionState
 
     $PowerShell.Runspace.SessionStateProxy.PSVariable.Set('GlobalState', $GlobalState)
     $PowerShell.Runspace.SessionStateProxy.PSVariable.Set('ScriptBlock', $ScriptBlock)
     $PowerShell.Runspace.SessionStateProxy.PSVariable.Set('Delay', $Delay)
+    $PowerShell.Runspace.SessionStateProxy.PSVariable.Set('LogPath', $LogPath)
 
 
     "Starting asynchronous execution" | Write-Verbose
@@ -91,11 +113,39 @@ function Import-ProfileAsync
         [System.Diagnostics.DebuggerHidden()]
         param()
 
-        # Runspace init is unsafe. Stack traces point to PSReadLine; not sure
+        # Runspace init is unsafe. Stack traces point to PSReadLine; not sure.
+        # Comment in PSRL source says:
+        #     This is a workaround to ensure the command analysis cache
+        #     has been created before we enter into ReadLine.
         Start-Sleep -Milliseconds $Delay
 
-        . $GlobalState {. $args[0]} $ScriptBlock
+        Write-Log "In ProfileAsync wrapper"
+
+        # Execute in the scope of GlobalState
+        . $GlobalState {
+            $ScriptBlock = $args[0]
+            $LogBlock = $args[1]
+
+            Set-Content Function:\Global:Write-Log $LogBlock
+            "Warning", "Verbose", "Debug", "Information" | ForEach-Object {
+                Set-Alias -Scope Global "Write-$_" Write-Log
+            }
+
+            . $ScriptBlock
+
+            "Warning", "Verbose", "Debug", "Information" | ForEach-Object {
+                Remove-Alias -Scope Global "Write-$_"
+            }
+            Remove-Item Function:\Global:Write-Log
+
+        } $ScriptBlock (Get-Command Write-Log).ScriptBlock
     }
+
+
+    $Provider = $PowerShell.Runspace.SessionStateProxy.InvokeProvider
+    $LogBlock = (Get-Command Write-Log).Definition
+    $null = $Provider.Item.Set("function:Global:Write-Log", [scriptblock]::Create($LogBlock))
+
     $AsyncResult = $Powershell.AddScript($Wrapper).BeginInvoke()
 
 
@@ -113,7 +163,7 @@ function Import-ProfileAsync
 
         if ($Powershell.Streams.Error)
         {
-            $Powershell.Streams.Error | Out-String | Write-Host -ForegroundColor Red
+            $Powershell.Streams.Error | Out-String | Write-Log -Stream Error
             $Powershell.Streams.Error.Clear()
         }
 
@@ -125,13 +175,15 @@ function Import-ProfileAsync
             }
             catch
             {
-                $_ | Out-String | Write-Host -ForegroundColor Red
+                $_ | Out-String | Write-Log -Stream Error
             }
 
             Unregister-Event $SourceIdentifier
             Get-Job $SourceIdentifier | Remove-Job
 
-            "Asynchronous execution complete", "State: $($Powershell.InvocationStateInfo.State)" | Write-Verbose
+            "Asynchronous execution complete", "State: $($Powershell.InvocationStateInfo.State)" | Write-Log
         }
     }
+
+    # Remove-Alias Write-Verbose -Scope Global
 }
