@@ -75,15 +75,15 @@ function Import-ProfileAsync
     }
 
 
-    $PowerShell = New-BoundPowerShell
+    $Powershell = New-BoundPowerShell
 
     # https://seeminglyscience.github.io/powershell/2017/09/30/invocation-operators-states-and-scopes
     $GlobalState = [psmoduleinfo]::new($false)
     $GlobalState.SessionState = $ExecutionContext.SessionState
 
-    $PowerShell.Runspace.SessionStateProxy.PSVariable.Set('GlobalState', $GlobalState)
-    $PowerShell.Runspace.SessionStateProxy.PSVariable.Set('ScriptBlock', $ScriptBlock)
-    $PowerShell.Runspace.SessionStateProxy.PSVariable.Set('Delay', $Delay)
+    $Powershell.Runspace.SessionStateProxy.PSVariable.Set('GlobalState', $GlobalState)
+    $Powershell.Runspace.SessionStateProxy.PSVariable.Set('ScriptBlock', $ScriptBlock)
+    $Powershell.Runspace.SessionStateProxy.PSVariable.Set('Delay', $Delay)
 
 
     "Starting asynchronous execution" | Write-Verbose
