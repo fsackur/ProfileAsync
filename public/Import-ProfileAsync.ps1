@@ -128,6 +128,12 @@ function Import-ProfileAsync
                 $_ | Out-String | Write-Host -ForegroundColor Red
             }
 
+            $Formats = $Powershell.Runspace.InitialSessionState.Formats
+            Update-FormatData -PrependPath $Formats.FileName
+
+            $Types = $Powershell.Runspace.InitialSessionState.Types
+            Update-TypeData -PrependPath $Types.FileName
+
             Unregister-Event $SourceIdentifier
             Get-Job $SourceIdentifier | Remove-Job
 
