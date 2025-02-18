@@ -154,8 +154,9 @@ function Import-ProfileAsync
 
             if (-not $Silent)
             {
-                "VERBOSE: Asynchronous execution complete", "VERBOSE: State: $($Powershell.InvocationStateInfo.State)" |
-                    Write-Host -ForegroundColor Yellow
+                $State = [string]$Powershell.InvocationStateInfo.State
+                $Msg = "VERBOSE: Asynchronous execution $($State.ToLower())"
+                $Msg | Write-Host -ForegroundColor Yellow
             }
         }
     }
