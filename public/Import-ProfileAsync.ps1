@@ -129,10 +129,18 @@ function Import-ProfileAsync
             }
 
             $Formats = $Powershell.Runspace.InitialSessionState.Formats
-            Update-FormatData -PrependPath $Formats.FileName
+            $FormatFiles = $Formats.FileName | Where-Object {$_ -and (Test-Path $_)}
+            if ($FormatFiles)
+            {
+                Update-FormatData -PrependPath $FormatFiles
+            }
 
             $Types = $Powershell.Runspace.InitialSessionState.Types
-            Update-TypeData -PrependPath $Types.FileName
+            $TypeFiles = $Types.FileName | Where-Object {$_ -and (Test-Path $_)}
+            if ($TypeFiles)
+            {
+                Update-TypeData -PrependPath $TypeFiles
+            }
 
             Unregister-Event $SourceIdentifier
             Get-Job $SourceIdentifier | Remove-Job
