@@ -74,12 +74,7 @@ function Import-ProfileAsync
         return
     }
 
-    $Silent = (Get-Command tty -CommandType Application -ErrorAction Ignore) -and (tty) -match "not a tty"
-    if ($Silent)
-    {
-        $VerbosePreference = 'SilentlyContinue'
-    }
-
+    $VerbosePresent = $PSBoundParameters.ContainsKey('Verbose')
 
     $Powershell = New-BoundPowerShell
 
@@ -108,13 +103,13 @@ function Import-ProfileAsync
 
     $SourceIdentifier = "__ProfileAsyncCleanup__" + [guid]::NewGuid()
     $HandlerParams = @{
-        MessageData = $AsyncResult, $Silent
+        MessageData = $AsyncResult, $VerbosePresent
         InputObject = $Powershell
         EventName = "InvocationStateChanged"
         SourceIdentifier = $SourceIdentifier
     }
     $null = Register-ObjectEvent @HandlerParams -Action {
-        $AsyncResult, $Silent = $Event.MessageData
+        $AsyncResult, $VerbosePresent = $Event.MessageData
         $Powershell = $Event.Sender
         $SourceIdentifier = $EventSubscriber.SourceIdentifier
 
@@ -152,11 +147,10 @@ function Import-ProfileAsync
             Unregister-Event $SourceIdentifier
             Get-Job $SourceIdentifier | Remove-Job
 
-            if (-not $Silent)
+            if ($VerbosePresent)
             {
                 $State = [string]$Powershell.InvocationStateInfo.State
-                $Msg = "VERBOSE: Asynchronous execution $($State.ToLower())"
-                $Msg | Write-Host -ForegroundColor Yellow
+                "VERBOSE: Asynchronous execution $($State.ToLower())" | Write-Host -ForegroundColor Yellow
             }
         }
     }
