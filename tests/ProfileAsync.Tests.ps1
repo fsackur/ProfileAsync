@@ -2,6 +2,7 @@ BeforeAll {
     $TestRoot = $PSScriptRoot
     $ModuleBase = $PSScriptRoot | Split-Path
     $PesterBase = (Get-Module Pester).ModuleBase
+    $ContainerRunner = 'docker', 'podman' | ForEach-Object { Get-Command $_ -ErrorAction SilentlyContinue } | Select-Object -Expand Name
     $Containers = @{}
 
     function Test
@@ -15,9 +16,8 @@ BeforeAll {
         begin
         {
             $Image = "mcr.microsoft.com/powershell"
-            $Listing = docker image ls --format json $Image | ConvertFrom-Json
-            if (-not $Listing) {docker pull $Image}
-
+            $Listing = & "$ContainerRunner" image ls --format json $Image | ConvertFrom-Json
+            if (-not $Listing) {& "$ContainerRunner" pull $Image}
             $FactScript = {
                 "waiting async marker" | Write-Verbose
                 while (-not (Test-Path $Marker)) {Start-Sleep -Milliseconds 100}
@@ -39,7 +39,7 @@ BeforeAll {
                 "pwsh", "-c", "$FactScript"
             )
 
-            $Id = docker run @RunArgs
+            $Id = & "$ContainerRunner" run @RunArgs
             if (-not $?) {throw}
             $Containers[$TestProfile] = $Id
         }
@@ -57,7 +57,7 @@ BeforeAll {
         {
             while ($true)
             {
-                $Container = docker inspect $Id | ConvertFrom-Json
+                $Container = & "$ContainerRunner" inspect $Id | ConvertFrom-Json
                 if (-not $Container.State.Running) {break}
                 Start-Sleep -Milliseconds 500
             }
@@ -75,8 +75,8 @@ BeforeAll {
 
         process
         {
-            docker logs $Id
-            docker rm -f $Id | Out-Null
+            & "$ContainerRunner" logs $Id
+            & "$ContainerRunner" rm -f $Id | Out-Null
         }
     }
 }
