@@ -2,7 +2,7 @@ BeforeAll {
     $TestRoot = $PSScriptRoot
     $ModuleBase = $PSScriptRoot | Split-Path
     $PesterBase = (Get-Module Pester).ModuleBase
-    $ContainerRunner = 'docker', 'podman' | ForEach-Object { Get-Command $_ -ErrorAction SilentlyContinue } | Select-Object -Expand Name
+    $ContainerRunner = 'docker', 'podman' | ForEach-Object { Get-Command $_ -ErrorAction SilentlyContinue } | Select-Object -First 1 -Expand Name
     $Containers = @{}
 
     function Test
