@@ -108,13 +108,13 @@ function Import-ProfileAsync
 
     $SourceIdentifier = "__ProfileAsyncCleanup__" + [guid]::NewGuid()
     $HandlerParams = @{
-        MessageData = $AsyncResult, $Silent
+        MessageData = $AsyncResult, $Silent, $VerbosePreference
         InputObject = $Powershell
         EventName = "InvocationStateChanged"
         SourceIdentifier = $SourceIdentifier
     }
     $null = Register-ObjectEvent @HandlerParams -Action {
-        $AsyncResult, $Silent = $Event.MessageData
+        $AsyncResult, $Silent, $VerbosePreference = $Event.MessageData
         $Powershell = $Event.Sender
         $SourceIdentifier = $EventSubscriber.SourceIdentifier
 
@@ -152,7 +152,7 @@ function Import-ProfileAsync
             Unregister-Event $SourceIdentifier
             Get-Job $SourceIdentifier | Remove-Job
 
-            if (-not $Silent)
+            if ($VerbosePreference -eq 'Continue' -and -not $Silent)
             {
                 $State = [string]$Powershell.InvocationStateInfo.State
                 $Msg = "VERBOSE: Asynchronous execution $($State.ToLower())"
